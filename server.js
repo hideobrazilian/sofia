@@ -36,7 +36,6 @@ cloudinary.config({
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-
     ssl: {
         rejectUnauthorized: false
     }
@@ -52,54 +51,81 @@ pool.query("SELECT NOW()")
 
 
 // ==========================
-// CRIAR TABELA
+// CRIAR TABELAS
 // ==========================
 
 async function criarTabela() {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS fotos (
-        id BIGSERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        url TEXT NOT NULL,
-        legenda TEXT,
-        data_momento DATE,
-        mensagem TEXT,
-        data TIMESTAMPTZ DEFAULT NOW(),
-        public_id TEXT
-      );
-    `);
+    try {
 
-    await pool.query(`
-      ALTER TABLE fotos ADD COLUMN IF NOT EXISTS data_momento DATE;
-    `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS fotos (
+                id BIGSERIAL PRIMARY KEY,
+                nome TEXT NOT NULL,
+                url TEXT NOT NULL,
+                legenda TEXT,
+                data_momento DATE,
+                mensagem TEXT,
+                data TIMESTAMPTZ DEFAULT NOW(),
+                public_id TEXT
+            );
+        `);
 
-    await pool.query(`
-      ALTER TABLE fotos ADD COLUMN IF NOT EXISTS mensagem TEXT;
-    `);
+        await pool.query(`
+            ALTER TABLE fotos
+            ADD COLUMN IF NOT EXISTS data_momento DATE;
+        `);
 
-    await pool.query(`
-      ALTER TABLE fotos ADD COLUMN IF NOT EXISTS public_id TEXT;
-    `);
+        await pool.query(`
+            ALTER TABLE fotos
+            ADD COLUMN IF NOT EXISTS mensagem TEXT;
+        `);
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS musicas (
-        id BIGSERIAL PRIMARY KEY,
-        titulo TEXT NOT NULL,
-        artista TEXT NOT NULL,
-        mensagem TEXT,
-        youtube_url TEXT,
-        spotify_url TEXT,
-        data_dia DATE,
-        musica_do_dia BOOLEAN DEFAULT FALSE,
-        criada_em TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
+        await pool.query(`
+            ALTER TABLE fotos
+            ADD COLUMN IF NOT EXISTS public_id TEXT;
+        `);
 
-    console.log("Tabelas verificadas.");
-  } catch (erro) {
-    console.error("Erro ao criar tabelas:", erro);
-  }
+
+        // ==========================
+        // MÚSICAS
+        // ==========================
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS musicas (
+                id BIGSERIAL PRIMARY KEY,
+                titulo TEXT NOT NULL,
+                artista TEXT NOT NULL,
+                mensagem TEXT,
+                youtube_url TEXT,
+                spotify_url TEXT,
+                data_dia TIMESTAMPTZ,
+                musica_do_dia BOOLEAN DEFAULT FALSE,
+                ordem_dia INTEGER,
+                criada_em TIMESTAMPTZ DEFAULT NOW()
+            );
+        `);
+
+        // Garante as colunas caso a tabela já existisse
+        await pool.query(`
+            ALTER TABLE musicas
+            ADD COLUMN IF NOT EXISTS ordem_dia INTEGER;
+        `);
+
+        await pool.query(`
+            ALTER TABLE musicas
+            ADD COLUMN IF NOT EXISTS musica_do_dia BOOLEAN DEFAULT FALSE;
+        `);
+
+        await pool.query(`
+            ALTER TABLE musicas
+            ADD COLUMN IF NOT EXISTS data_dia TIMESTAMPTZ;
+        `);
+
+        console.log("Tabelas verificadas.");
+
+    } catch (erro) {
+        console.error("Erro ao criar tabelas:", erro);
+    }
 }
 
 criarTabela();
@@ -113,7 +139,6 @@ criarTabela();
 // enquanto é enviada para o Cloudinary.
 
 const upload = multer({
-
     storage: multer.memoryStorage(),
 
     limits: {
@@ -129,7 +154,6 @@ const upload = multer({
         }
 
     }
-
 });
 
 
@@ -142,7 +166,6 @@ function uploadParaCloudinary(buffer) {
     return new Promise((resolve, reject) => {
 
         const stream = cloudinary.uploader.upload_stream(
-
             {
                 folder: "nos/fotos",
                 resource_type: "image"
@@ -157,13 +180,10 @@ function uploadParaCloudinary(buffer) {
                 }
 
             }
-
         );
 
         stream.end(buffer);
-
     });
-
 }
 
 
@@ -229,7 +249,6 @@ app.post(
 
             }
 
-
             const dataMomento =
                 req.body.data_momento || null;
 
@@ -245,7 +264,6 @@ app.post(
                 req.file.buffer
             );
 
-
             console.log(
                 "Imagem enviada para Cloudinary:",
                 imagem.secure_url
@@ -257,7 +275,6 @@ app.post(
             // ==========================
 
             const resultado = await pool.query(
-
                 `
                 INSERT INTO fotos
                 (
@@ -277,7 +294,6 @@ app.post(
                 )
                 RETURNING *
                 `,
-
                 [
                     req.file.originalname,
                     imagem.secure_url,
@@ -285,7 +301,6 @@ app.post(
                     mensagem,
                     imagem.public_id
                 ]
-
             );
 
 
@@ -305,9 +320,7 @@ app.post(
             );
 
             res.status(500).json({
-
                 erro: "Erro ao salvar imagem."
-
             });
 
         }
@@ -412,165 +425,242 @@ app.delete(
     }
 );
 
-// =========================
+
+// ==========================
 // MÚSICAS
-// =========================
+// ==========================
+
+
+// ==========================
+// LISTAR MÚSICAS
+// ==========================
 
 app.get("/api/musicas", async (req, res) => {
-  try {
-    const resultado = await pool.query(`
-      SELECT *
-      FROM musicas
-      ORDER BY criada_em DESC
-    `);
-
-    res.json(resultado.rows);
-  } catch (erro) {
-    console.error(erro);
-    res.status(500).json({
-      erro: "Erro ao buscar músicas."
-    });
-  }
-});
-
-
-app.post("/api/musicas", async (req, res) => {
-  try {
-    const {
-      titulo,
-      artista,
-      mensagem,
-      youtube_url,
-      spotify_url
-    } = req.body;
-
-    if (!titulo || !artista) {
-      return res.status(400).json({
-        erro: "Título e artista são obrigatórios."
-      });
-    }
-
-    const resultado = await pool.query(`
-      INSERT INTO musicas (
-        titulo,
-        artista,
-        mensagem,
-        youtube_url,
-        spotify_url
-      )
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-    `, [
-      titulo,
-      artista,
-      mensagem || null,
-      youtube_url || null,
-      spotify_url || null
-    ]);
-
-    res.status(201).json({
-      mensagem: "Música adicionada com sucesso!",
-      musica: resultado.rows[0]
-    });
-
-  } catch (erro) {
-    console.error(erro);
-
-    res.status(500).json({
-      erro: "Erro ao salvar música."
-    });
-  }
-});
-
-
-app.put("/api/musicas/:id/dia", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Remove a música do dia atual
-    await pool.query(`
-      UPDATE musicas
-      SET musica_do_dia = FALSE
-    `);
-
-    // Define a escolhida
-    const resultado = await pool.query(`
-      UPDATE musicas
-      SET
-        musica_do_dia = TRUE,
-        data_dia = CURRENT_DATE
-      WHERE id = $1
-      RETURNING *
-    `, [id]);
-
-    if (resultado.rows.length === 0) {
-      return res.status(404).json({
-        erro: "Música não encontrada."
-      });
-    }
-
-    res.json({
-      mensagem: "Música do dia definida!",
-      musica: resultado.rows[0]
-    });
-
-  } catch (erro) {
-    console.error(erro);
-
-    res.status(500).json({
-      erro: "Erro ao definir música do dia."
-    });
-  }
-});
-
-
-app.delete("/api/musicas/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const resultado = await pool.query(
-      "DELETE FROM musicas WHERE id = $1 RETURNING *",
-      [id]
-    );
-
-    if (resultado.rows.length === 0) {
-      return res.status(404).json({
-        erro: "Música não encontrada."
-      });
-    }
-
-    res.json({
-      mensagem: "Música excluída com sucesso!"
-    });
-
-  } catch (erro) {
-    console.error(erro);
-
-    res.status(500).json({
-      erro: "Erro ao excluir música."
-    });
-  }
-});
-app.put("/api/musicas/:id", async (req, res) => {
-    const { id } = req.params;
-    const {
-        titulo,
-        artista,
-        mensagem,
-        youtube_url,
-        spotify_url
-    } = req.body;
 
     try {
+
+        // Remove somente o destaque
+        // depois de 24 horas.
+        // A música continua salva.
+
+        await pool.query(`
+            UPDATE musicas
+            SET musica_do_dia = FALSE,
+                ordem_dia = NULL
+            WHERE musica_do_dia = TRUE
+            AND data_dia IS NOT NULL
+            AND data_dia <= NOW() - INTERVAL '24 hours'
+        `);
+
+
+        const resultado = await pool.query(`
+            SELECT *
+            FROM musicas
+            ORDER BY criada_em DESC
+        `);
+
+
+        res.json(resultado.rows);
+
+
+    } catch (erro) {
+
+        console.error(erro);
+
+        res.status(500).json({
+            erro: "Erro ao buscar músicas"
+        });
+
+    }
+
+});
+
+
+// ==========================
+// ADICIONAR MÚSICA
+// ==========================
+
+app.post("/api/musicas", async (req, res) => {
+
+    try {
+
+        const {
+            titulo,
+            artista,
+            mensagem,
+            youtube_url,
+            spotify_url
+        } = req.body;
+
+
+        if (!titulo || !artista) {
+
+            return res.status(400).json({
+                erro: "Título e artista são obrigatórios."
+            });
+
+        }
+
+
         const resultado = await pool.query(
-            `UPDATE musicas
-             SET titulo = $1,
-                 artista = $2,
-                 mensagem = $3,
-                 youtube_url = $4,
-                 spotify_url = $5
-             WHERE id = $6
-             RETURNING *`,
+            `
+            INSERT INTO musicas
+            (
+                titulo,
+                artista,
+                mensagem,
+                youtube_url,
+                spotify_url
+            )
+            VALUES
+            (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5
+            )
+            RETURNING *
+            `,
+            [
+                titulo,
+                artista,
+                mensagem || null,
+                youtube_url || null,
+                spotify_url || null
+            ]
+        );
+
+
+        res.status(201).json({
+
+            mensagem: "Música adicionada com sucesso!",
+
+            musica: resultado.rows[0]
+
+        });
+
+
+    } catch (erro) {
+
+        console.error(erro);
+
+        res.status(500).json({
+            erro: "Erro ao salvar música."
+        });
+
+    }
+
+});
+
+
+// ==========================
+// DEFINIR MÚSICA DO DIA
+// ==========================
+
+// ordem = 1 ou 2
+
+app.put("/api/musicas/:id/dia", async (req, res) => {
+
+    const { id } = req.params;
+    const { ordem } = req.body;
+
+
+    if (![1, 2].includes(Number(ordem))) {
+
+        return res.status(400).json({
+            erro: "A ordem deve ser 1 ou 2."
+        });
+
+    }
+
+
+    try {
+
+        // Remove somente a música que
+        // ocupava aquela posição.
+
+        await pool.query(
+            `
+            UPDATE musicas
+            SET musica_do_dia = FALSE,
+                ordem_dia = NULL
+            WHERE ordem_dia = $1
+            `,
+            [ordem]
+        );
+
+
+        // Define a nova música
+
+        const resultado = await pool.query(
+            `
+            UPDATE musicas
+            SET musica_do_dia = TRUE,
+                ordem_dia = $1,
+                data_dia = NOW()
+            WHERE id = $2
+            RETURNING *
+            `,
+            [ordem, id]
+        );
+
+
+        if (resultado.rows.length === 0) {
+
+            return res.status(404).json({
+                erro: "Música não encontrada."
+            });
+
+        }
+
+
+        res.json(resultado.rows[0]);
+
+
+    } catch (erro) {
+
+        console.error(erro);
+
+        res.status(500).json({
+            erro: "Erro ao definir música do dia."
+        });
+
+    }
+
+});
+
+
+// ==========================
+// EDITAR MÚSICA
+// ==========================
+
+app.put("/api/musicas/:id", async (req, res) => {
+
+    const { id } = req.params;
+
+    const {
+        titulo,
+        artista,
+        mensagem,
+        youtube_url,
+        spotify_url
+    } = req.body;
+
+
+    try {
+
+        const resultado = await pool.query(
+            `
+            UPDATE musicas
+            SET titulo = $1,
+                artista = $2,
+                mensagem = $3,
+                youtube_url = $4,
+                spotify_url = $5
+            WHERE id = $6
+            RETURNING *
+            `,
             [
                 titulo,
                 artista,
@@ -581,21 +671,79 @@ app.put("/api/musicas/:id", async (req, res) => {
             ]
         );
 
+
         if (resultado.rows.length === 0) {
+
             return res.status(404).json({
                 erro: "Música não encontrada"
             });
+
         }
+
 
         res.json(resultado.rows[0]);
 
+
     } catch (erro) {
+
         console.error(erro);
+
         res.status(500).json({
             erro: "Erro ao editar música"
         });
+
     }
+
 });
+
+
+// ==========================
+// EXCLUIR MÚSICA
+// ==========================
+
+app.delete("/api/musicas/:id", async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+
+
+        const resultado = await pool.query(
+            `
+            DELETE FROM musicas
+            WHERE id = $1
+            RETURNING *
+            `,
+            [id]
+        );
+
+
+        if (resultado.rows.length === 0) {
+
+            return res.status(404).json({
+                erro: "Música não encontrada."
+            });
+
+        }
+
+
+        res.json({
+            mensagem: "Música excluída com sucesso!"
+        });
+
+
+    } catch (erro) {
+
+        console.error(erro);
+
+        res.status(500).json({
+            erro: "Erro ao excluir música."
+        });
+
+    }
+
+});
+
 
 // ==========================
 // TRATAMENTO DE ERROS
@@ -637,4 +785,3 @@ app.listen(PORT, () => {
     );
 
 });
-
