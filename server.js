@@ -120,6 +120,10 @@ async function criarTabela() {
             ALTER TABLE musicas
             ADD COLUMN IF NOT EXISTS data_dia TIMESTAMPTZ;
         `);
+        await pool.query(`
+           ALTER TABLE musicas
+           ADD COLUMN IF NOT EXISTS adicionada_por TEXT;
+`);
 
         console.log("Tabelas verificadas.");
 
@@ -459,12 +463,13 @@ app.get("/api/musicas", async (req, res) => {
 app.post("/api/musicas", async (req, res) => {
     try {
         const {
-            titulo,
-            artista,
-            mensagem,
-            youtube_url,
-            spotify_url
-        } = req.body;
+          titulo,
+          artista,
+          mensagem,
+          youtube_url,
+          spotify_url,
+          adicionada_por
+      } = req.body;
 
         if (!titulo || !artista) {
             return res.status(400).json({
@@ -473,26 +478,21 @@ app.post("/api/musicas", async (req, res) => {
         }
 
         const resultado = await pool.query(
-            `
-            INSERT INTO musicas
-            (
-                titulo,
-                artista,
-                mensagem,
-                youtube_url,
-                spotify_url
-            )
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING *
-            `,
-            [
-                titulo,
-                artista,
-                mensagem || null,
-                youtube_url || null,
-                spotify_url || null
-            ]
-        );
+    `
+    INSERT INTO musicas
+    (titulo, artista, mensagem, youtube_url, spotify_url, adicionada_por)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING *
+    `,
+    [
+        titulo,
+        artista,
+        mensagem || null,
+        youtube_url || null,
+        spotify_url || null,
+        adicionada_por || null
+    ]
+);
 
         res.status(201).json({
             mensagem: "Música adicionada com sucesso!",
