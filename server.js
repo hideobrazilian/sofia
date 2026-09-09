@@ -425,33 +425,18 @@ app.delete(
     }
 );
 
-
-// ==========================
 // MÚSICAS
-// ==========================
-
-
-// ==========================
-// LISTAR MÚSICAS
-// ==========================
 
 app.get("/api/musicas", async (req, res) => {
-
     try {
-
-        // Remove somente o destaque
-        // depois de 24 horas.
-        // A música continua salva.
-
         await pool.query(`
             UPDATE musicas
             SET musica_do_dia = FALSE,
-                ordem_dia = NULL
+                data_dia = NULL
             WHERE musica_do_dia = TRUE
             AND data_dia IS NOT NULL
             AND data_dia <= NOW() - INTERVAL '24 hours'
         `);
-
 
         const resultado = await pool.query(`
             SELECT *
@@ -459,31 +444,20 @@ app.get("/api/musicas", async (req, res) => {
             ORDER BY criada_em DESC
         `);
 
-
         res.json(resultado.rows);
 
-
     } catch (erro) {
-
         console.error(erro);
 
         res.status(500).json({
-            erro: "Erro ao buscar músicas"
+            erro: "Erro ao buscar músicas."
         });
-
     }
-
 });
 
 
-// ==========================
-// ADICIONAR MÚSICA
-// ==========================
-
 app.post("/api/musicas", async (req, res) => {
-
     try {
-
         const {
             titulo,
             artista,
@@ -492,15 +466,11 @@ app.post("/api/musicas", async (req, res) => {
             spotify_url
         } = req.body;
 
-
         if (!titulo || !artista) {
-
             return res.status(400).json({
                 erro: "Título e artista são obrigatórios."
             });
-
         }
-
 
         const resultado = await pool.query(
             `
@@ -512,14 +482,7 @@ app.post("/api/musicas", async (req, res) => {
                 youtube_url,
                 spotify_url
             )
-            VALUES
-            (
-                $1,
-                $2,
-                $3,
-                $4,
-                $5
-            )
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING *
             `,
             [
@@ -531,92 +494,78 @@ app.post("/api/musicas", async (req, res) => {
             ]
         );
 
-
         res.status(201).json({
-
             mensagem: "Música adicionada com sucesso!",
-
             musica: resultado.rows[0]
-
         });
 
-
     } catch (erro) {
-
         console.error(erro);
 
         res.status(500).json({
             erro: "Erro ao salvar música."
         });
-
     }
-
 });
 
 
-// ==========================
-// DEFINIR MÚSICA DO DIA
-// ==========================
+/*
+    DEFINIR MÚSICA DO DIA
 
-// ordem = 1 ou 2
+    pessoa:
+    "voce"
+    "ela"
+*/
 
 app.put("/api/musicas/:id/dia", async (req, res) => {
 
     const { id } = req.params;
-    const { ordem } = req.body;
+    const { pessoa } = req.body;
 
-
-    if (![1, 2].includes(Number(ordem))) {
-
+    if (!["voce", "ela"].includes(pessoa)) {
         return res.status(400).json({
-            erro: "A ordem deve ser 1 ou 2."
+            erro: "Pessoa inválida."
         });
-
     }
-
 
     try {
 
-        // Remove somente a música que
-        // ocupava aquela posição.
-
+        // Remove a música que já ocupa esse espaço
         await pool.query(
             `
             UPDATE musicas
             SET musica_do_dia = FALSE,
-                ordem_dia = NULL
-            WHERE ordem_dia = $1
+                data_dia = NULL,
+                escolhida_por = NULL
+            WHERE musica_do_dia = TRUE
+            AND escolhida_por = $1
             `,
-            [ordem]
+            [pessoa]
         );
 
 
         // Define a nova música
-
         const resultado = await pool.query(
             `
             UPDATE musicas
             SET musica_do_dia = TRUE,
-                ordem_dia = $1,
+                escolhida_por = $1,
                 data_dia = NOW()
             WHERE id = $2
             RETURNING *
             `,
-            [ordem, id]
+            [pessoa, id]
         );
 
 
         if (resultado.rows.length === 0) {
-
             return res.status(404).json({
                 erro: "Música não encontrada."
             });
-
         }
 
 
         res.json(resultado.rows[0]);
-
 
     } catch (erro) {
 
@@ -625,15 +574,9 @@ app.put("/api/musicas/:id/dia", async (req, res) => {
         res.status(500).json({
             erro: "Erro ao definir música do dia."
         });
-
     }
-
 });
 
-
-// ==========================
-// EDITAR MÚSICA
-// ==========================
 
 app.put("/api/musicas/:id", async (req, res) => {
 
@@ -646,7 +589,6 @@ app.put("/api/musicas/:id", async (req, res) => {
         youtube_url,
         spotify_url
     } = req.body;
-
 
     try {
 
@@ -673,40 +615,30 @@ app.put("/api/musicas/:id", async (req, res) => {
 
 
         if (resultado.rows.length === 0) {
-
             return res.status(404).json({
-                erro: "Música não encontrada"
+                erro: "Música não encontrada."
             });
-
         }
 
 
         res.json(resultado.rows[0]);
-
 
     } catch (erro) {
 
         console.error(erro);
 
         res.status(500).json({
-            erro: "Erro ao editar música"
+            erro: "Erro ao editar música."
         });
-
     }
-
 });
 
-
-// ==========================
-// EXCLUIR MÚSICA
-// ==========================
 
 app.delete("/api/musicas/:id", async (req, res) => {
 
     try {
 
         const { id } = req.params;
-
 
         const resultado = await pool.query(
             `
@@ -719,18 +651,15 @@ app.delete("/api/musicas/:id", async (req, res) => {
 
 
         if (resultado.rows.length === 0) {
-
             return res.status(404).json({
                 erro: "Música não encontrada."
             });
-
         }
 
 
         res.json({
             mensagem: "Música excluída com sucesso!"
         });
-
 
     } catch (erro) {
 
@@ -739,11 +668,8 @@ app.delete("/api/musicas/:id", async (req, res) => {
         res.status(500).json({
             erro: "Erro ao excluir música."
         });
-
     }
-
 });
-
 
 // ==========================
 // TRATAMENTO DE ERROS
