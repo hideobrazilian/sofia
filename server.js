@@ -56,44 +56,50 @@ pool.query("SELECT NOW()")
 // ==========================
 
 async function criarTabela() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fotos (
+        id BIGSERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        url TEXT NOT NULL,
+        legenda TEXT,
+        data_momento DATE,
+        mensagem TEXT,
+        data TIMESTAMPTZ DEFAULT NOW(),
+        public_id TEXT
+      );
+    `);
 
-    try {
+    await pool.query(`
+      ALTER TABLE fotos ADD COLUMN IF NOT EXISTS data_momento DATE;
+    `);
 
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS fotos (
-                id BIGSERIAL PRIMARY KEY,
-                nome TEXT NOT NULL,
-                url TEXT NOT NULL,
-                legenda TEXT,
-                data_momento DATE,
-                mensagem TEXT,
-                data TIMESTAMPTZ DEFAULT NOW(),
-                public_id TEXT
-            );
-        `);
+    await pool.query(`
+      ALTER TABLE fotos ADD COLUMN IF NOT EXISTS mensagem TEXT;
+    `);
 
-        await pool.query(`
-            ALTER TABLE fotos
-            ADD COLUMN IF NOT EXISTS data_momento DATE;
-        `);
+    await pool.query(`
+      ALTER TABLE fotos ADD COLUMN IF NOT EXISTS public_id TEXT;
+    `);
 
-        await pool.query(`
-            ALTER TABLE fotos
-            ADD COLUMN IF NOT EXISTS mensagem TEXT;
-        `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS musicas (
+        id BIGSERIAL PRIMARY KEY,
+        titulo TEXT NOT NULL,
+        artista TEXT NOT NULL,
+        mensagem TEXT,
+        youtube_url TEXT,
+        spotify_url TEXT,
+        data_dia DATE,
+        musica_do_dia BOOLEAN DEFAULT FALSE,
+        criada_em TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
 
-        await pool.query(`
-            ALTER TABLE fotos
-            ADD COLUMN IF NOT EXISTS public_id TEXT;
-        `);
-
-        console.log("Tabela fotos verificada.");
-
-    } catch (erro) {
-
-        console.error("Erro ao criar tabela:", erro);
-
-    }
+    console.log("Tabelas verificadas.");
+  } catch (erro) {
+    console.error("Erro ao criar tabelas:", erro);
+  }
 }
 
 criarTabela();
@@ -406,6 +412,145 @@ app.delete(
     }
 );
 
+// =========================
+// MÚSICAS
+// =========================
+
+app.get("/api/musicas", async (req, res) => {
+  try {
+    const resultado = await pool.query(`
+      SELECT *
+      FROM musicas
+      ORDER BY criada_em DESC
+    `);
+
+    res.json(resultado.rows);
+  } catch (erro) {
+    console.error(erro);
+    res.status(500).json({
+      erro: "Erro ao buscar músicas."
+    });
+  }
+});
+
+
+app.post("/api/musicas", async (req, res) => {
+  try {
+    const {
+      titulo,
+      artista,
+      mensagem,
+      youtube_url,
+      spotify_url
+    } = req.body;
+
+    if (!titulo || !artista) {
+      return res.status(400).json({
+        erro: "Título e artista são obrigatórios."
+      });
+    }
+
+    const resultado = await pool.query(`
+      INSERT INTO musicas (
+        titulo,
+        artista,
+        mensagem,
+        youtube_url,
+        spotify_url
+      )
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `, [
+      titulo,
+      artista,
+      mensagem || null,
+      youtube_url || null,
+      spotify_url || null
+    ]);
+
+    res.status(201).json({
+      mensagem: "Música adicionada com sucesso!",
+      musica: resultado.rows[0]
+    });
+
+  } catch (erro) {
+    console.error(erro);
+
+    res.status(500).json({
+      erro: "Erro ao salvar música."
+    });
+  }
+});
+
+
+app.put("/api/musicas/:id/dia", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Remove a música do dia atual
+    await pool.query(`
+      UPDATE musicas
+      SET musica_do_dia = FALSE
+    `);
+
+    // Define a escolhida
+    const resultado = await pool.query(`
+      UPDATE musicas
+      SET
+        musica_do_dia = TRUE,
+        data_dia = CURRENT_DATE
+      WHERE id = $1
+      RETURNING *
+    `, [id]);
+
+    if (resultado.rows.length === 0) {
+      return res.status(404).json({
+        erro: "Música não encontrada."
+      });
+    }
+
+    res.json({
+      mensagem: "Música do dia definida!",
+      musica: resultado.rows[0]
+    });
+
+  } catch (erro) {
+    console.error(erro);
+
+    res.status(500).json({
+      erro: "Erro ao definir música do dia."
+    });
+  }
+});
+
+
+app.delete("/api/musicas/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const resultado = await pool.query(
+      "DELETE FROM musicas WHERE id = $1 RETURNING *",
+      [id]
+    );
+
+    if (resultado.rows.length === 0) {
+      return res.status(404).json({
+        erro: "Música não encontrada."
+      });
+    }
+
+    res.json({
+      mensagem: "Música excluída com sucesso!"
+    });
+
+  } catch (erro) {
+    console.error(erro);
+
+    res.status(500).json({
+      erro: "Erro ao excluir música."
+    });
+  }
+});
 
 // ==========================
 // TRATAMENTO DE ERROS
@@ -447,3 +592,4 @@ app.listen(PORT, () => {
     );
 
 });
+
