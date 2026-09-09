@@ -551,6 +551,51 @@ app.delete("/api/musicas/:id", async (req, res) => {
     });
   }
 });
+app.put("/api/musicas/:id", async (req, res) => {
+    const { id } = req.params;
+    const {
+        titulo,
+        artista,
+        mensagem,
+        youtube_url,
+        spotify_url
+    } = req.body;
+
+    try {
+        const resultado = await pool.query(
+            `UPDATE musicas
+             SET titulo = $1,
+                 artista = $2,
+                 mensagem = $3,
+                 youtube_url = $4,
+                 spotify_url = $5
+             WHERE id = $6
+             RETURNING *`,
+            [
+                titulo,
+                artista,
+                mensagem || null,
+                youtube_url || null,
+                spotify_url || null,
+                id
+            ]
+        );
+
+        if (resultado.rows.length === 0) {
+            return res.status(404).json({
+                erro: "Música não encontrada"
+            });
+        }
+
+        res.json(resultado.rows[0]);
+
+    } catch (erro) {
+        console.error(erro);
+        res.status(500).json({
+            erro: "Erro ao editar música"
+        });
+    }
+});
 
 // ==========================
 // TRATAMENTO DE ERROS
