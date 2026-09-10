@@ -265,40 +265,30 @@ app.post(
     upload.single("imagem"),
     async (req, res) => {
 
+        console.log("========== UPLOAD ==========");
+        console.log("UPLOAD RECEBIDO!");
+        console.log("Arquivo:", req.file?.originalname);
+        console.log("Tipo:", req.file?.mimetype);
+        console.log("Tamanho:", req.file?.size);
+
         try {
-
             if (!req.file) {
-
                 return res.status(400).json({
                     erro: "Nenhuma imagem enviada."
                 });
-
             }
 
-            const dataMomento =
-                req.body.data_momento || null;
+            console.log("Iniciando Cloudinary...");
 
-            const mensagem =
-                req.body.mensagem || null;
+            const imagem = await uploadParaCloudinary(req.file.buffer);
 
+            console.log("Cloudinary terminou!");
+            console.log("URL:", imagem.secure_url);
 
-            // ==========================
-            // CLOUDINARY
-            // ==========================
+            const dataMomento = req.body.data_momento || null;
+            const mensagem = req.body.mensagem || null;
 
-            const imagem = await uploadParaCloudinary(
-                req.file.buffer
-            );
-
-            console.log(
-                "Imagem enviada para Cloudinary:",
-                imagem.secure_url
-            );
-
-
-            // ==========================
-            // POSTGRESQL
-            // ==========================
+            console.log("Iniciando INSERT no banco...");
 
             const resultado = await pool.query(
                 `
@@ -310,17 +300,9 @@ app.post(
                     mensagem,
                     public_id
                 )
-                VALUES
-                (
-                    $1,
-                    $2,
-                    $3,
-                    $4,
-                    $5
-                )
+                VALUES ($1, $2, $3, $4, $5)
                 RETURNING *
                 `,
-
                 [
                     req.file.originalname,
                     imagem.secure_url,
@@ -330,28 +312,21 @@ app.post(
                 ]
             );
 
+            console.log("Banco terminou!");
+            console.log("Enviando resposta 201...");
 
             res.status(201).json({
-
                 mensagem: "Imagem criada com sucesso!",
-
                 foto: resultado.rows[0]
-
             });
 
         } catch (erro) {
-
-            console.error(
-                "Erro ao salvar imagem:",
-                erro
-            );
+            console.error("ERRO NO UPLOAD:", erro);
 
             res.status(500).json({
                 erro: "Erro ao salvar imagem."
             });
-
         }
-
     }
 );
 
